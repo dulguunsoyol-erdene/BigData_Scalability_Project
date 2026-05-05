@@ -1,60 +1,56 @@
 import time
+import pandas as pd
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, when, sum as spark_sum, datediff, lit, avg
+from pyspark.sql.functions import col, avg, lit, to_date
 
-# Create Spark session
-spark = SparkSession.builder \
-    .appName("Subscription Filtering") \
-    .getOrCreate()
+spark = SparkSession.builder.appName("Accuracy+Timeliness Benchmark").getOrCreate()
 
-# Read data
-df = spark.read.csv("data/churn_seed_1_1_2M.csv", header=True, inferSchema=True)
-# df = spark.read.csv("data/churn_seed_1_5_6M.csv", header=True, inferSchema=True)
-# df = spark.read.csv("data/churn_seed_1_11_2M.csv", header=True, inferSchema=True)
+files = [
+    ("100MB", "data/churn_seed_2_1_2M.csv"),
+    ("512MB", "data/churn_seed_2_5_6M.csv"),
+    ("1GB",   "data/churn_seed_2_11_2M.csv")
+]
 
-### Workload 5: ACCURACY + TIMELINESS
-# Test 5.1: Basic (few columns)
-start = time.perf_counter()
+results = []
 
-df.withColumn("score",
-    (col("Monthly_Fee") >= 0) &
-    (col("Customer_Tenure_Months") >= 0)
-).count()
+for label, path in files:
+    print(f"\nProcessing {label} dataset: {path}")
+    df = spark.read.csv(path, header=True, inferSchema=True)
 
-end = time.perf_counter()
-print("TA1 Spark:", end - start)
+    # Test 5.1
+    start = time.perf_counter()
+    df.select(avg((
+        (col("Monthly_Fee") >= 0) &
+        (col("Customer_Tenure_Months") >= 0)
+    ).cast("int"))).collect()
+    t1 = time.perf_counter() - start
+    print(f"TA1 Spark: {t1:.6f}s")
 
-# Test 5.2: Medium (Medium rules)
-start = time.perf_counter()
-
-df.withColumn("score",
-    (col("Monthly_Fee") >= 10) &
-    (col("Avg_Monthly_Usage_Hours") <= 80) &
-    (col("Signup_Date") <= lit("2025-01-01"))
-).count()
-
-end = time.perf_counter()
-print("TA2 Spark:", end - start)
-
-# Test 5.3: Hard (full pipeline)
-ref = df.select("Customer_ID") \
-    .withColumn("Last_Update", lit("2025-01-01"))
-
-start = time.perf_counter()
-
-result = df.join(ref, "Customer_ID") \
-    .withColumn("score",
+    # Test 5.2
+    start = time.perf_counter()
+    df.select(avg((
         (col("Monthly_Fee") >= 10) &
         (col("Avg_Monthly_Usage_Hours") <= 80) &
-        (col("Last_Update") >= col("Signup_Date"))
-    ) \
-    .select(avg(col("score").cast("double")).alias("score")) \
-    .collect()
+        (to_date(col("Signup_Date")) <= to_date(lit("2025-01-01")))
+    ).cast("int"))).collect()
+    t2 = time.perf_counter() - start
+    print(f"TA2 Spark: {t2:.6f}s")
 
-end = time.perf_counter()
+    # Test 5.3
+    ref = df.select("Customer_ID").withColumn("Last_Update", lit("2025-01-01"))
 
-print("TA3 Spark:", end - start)
-# print("Score:", result[0]["score"])
+    start = time.perf_counter()
+    df.join(ref, "Customer_ID") \
+      .select(avg((
+          (col("Monthly_Fee") >= 10) &
+          (col("Avg_Monthly_Usage_Hours") <= 80) &
+          (to_date(col("Last_Update")) >= to_date(col("Signup_Date")))
+      ).cast("int"))).collect()
+    t3 = time.perf_counter() - start
+    print(f"TA3 Spark: {t3:.6f}s")
 
-# Stop Spark session
+    results.append({'size': label, 'test_1': t1, 'test_2': t2, 'test_3': t3,
+                    'avg': (t1 + t2 + t3) / 3})
+
+print("\n", pd.DataFrame(results))
 spark.stop()

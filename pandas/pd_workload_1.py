@@ -1,49 +1,48 @@
 import pandas as pd
-import numpy as np
 import time
 
-
 files = [
-    ("100MB", "data/churn_seed_2_1_2M.csv"),
-    ("512MB", "data/churn_seed_2_5_6M.csv"),
-    ("1GB", "data/churn_seed_2_11_2M.csv")
+    ("100MB", "data/1.2M_churn_data.csv"),
+    ("512MB", "data/5.6M_churn_data.csv"),
+    ("1GB",   "data/11.2M_churn_data.csv")
 ]
+
+results = []
 
 for label, path in files:
     print(f"\nProcessing {label} dataset: {path}")
-    
     df = pd.read_csv(path)
     print("Shape:", df.shape)
 
-    ### Workload 1: COMPLETENESS
-    # Test 1.1: Basic (few columns)
+    # Test 1.1
     start = time.perf_counter()
-
-    missing_age = df["Age"].isnull().sum()
+    missing_age    = df["Age"].isnull().sum()
     missing_gender = df["Gender"].isnull().sum()
+    t1 = time.perf_counter() - start
+    print(f"C1 Pandas: {t1:.6f}s")
 
-    end = time.perf_counter()
-    print("C1 Pandas:", end - start)
-
-
-    # Test 1.2: Medium (all columns + "None")
+    # Test 1.2 — type-aware null/"None" check to match PySpark
     start = time.perf_counter()
+    total = 0
+    for col in df.columns:
+        if df[col].dtype == object:
+            total += (df[col].isnull() | (df[col] == "None")).sum()
+        else:
+            total += df[col].isnull().sum()
+    t2 = time.perf_counter() - start
+    print(f"C2 Pandas: {t2:.6f}s")
 
-    invalid = (df == "None").sum().sum()
-
-    end = time.perf_counter()
-
-    print("C2 Pandas:", end - start)
-
-
-    # Test 1.3: Complex (same 3 columns as Spark)
+    # Test 1.3
     start = time.perf_counter()
-
     invalid = (
         (df["Monthly_Fee"] > 0).sum() +
         (df["Age"] > 20).sum() +
         (df["Gender"] == "None").sum()
     )
+    t3 = time.perf_counter() - start
+    print(f"C3 Pandas: {t3:.6f}s")
 
-    end = time.perf_counter()
-    print("C3 Pandas:", end - start)
+    results.append({'size': label, 'test_1': t1, 'test_2': t2, 'test_3': t3,
+                    'avg': (t1 + t2 + t3) / 3})
+
+print("\n", pd.DataFrame(results))

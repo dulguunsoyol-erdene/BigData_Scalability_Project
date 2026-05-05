@@ -1,65 +1,57 @@
 import time
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, when, sum as spark_sum
-from torch import StringType
+from pyspark.sql.types import StringType
 
-# Create Spark session
-spark = SparkSession.builder \
-    .appName("Subscription Filtering") \
-    .getOrCreate()
+spark = SparkSession.builder.appName("Completeness Benchmark").getOrCreate()
 
-# Read data
-df = spark.read.csv("data/churn_seed_1_1_2M.csv", header=True, inferSchema=True)
-# df = spark.read.csv("data/churn_seed_1_5_6M.csv", header=True, inferSchema=True)
-# df = spark.read.csv("data/churn_seed_1_11_2M.csv", header=True, inferSchema=True)
+files = [
+    ("100MB", "data/1.2M_churn_data.csv"),
+    ("512MB", "data/5.6M_churn_data.csv"),
+    ("1GB",   "data/11.2M_churn_data.csv")
+]
 
-### Workload 1: COMPLETENESS
-# Test 1.1: Basic (few columns)
-start = time.perf_counter()
+results = []
 
-df.select(
-    spark_sum(when(col("Age").isNull(),1)),
-    spark_sum(when(col("Gender").isNull(),1))
-).collect()
+for label, path in files:
+    print(f"\nProcessing {label} dataset: {path}")
+    df = spark.read.csv(path, header=True, inferSchema=True)
 
-end = time.perf_counter()
-print("C1 Spark:", end - start)
+    # Test 1.1
+    start = time.perf_counter()
+    df.select(
+        spark_sum(when(col("Age").isNull(), 1)),
+        spark_sum(when(col("Gender").isNull(), 1))
+    ).collect()
+    t1 = time.perf_counter() - start
+    print(f"C1 Spark: {t1:.6f}s")
 
-# Test 1.2: Medium (all columns + "None")
-start = time.perf_counter()
+    # Test 1.2 — type-aware null/"None" check to match Pandas
+    start = time.perf_counter()
+    exprs = []
+    for field in df.schema.fields:
+        c = field.name
+        if isinstance(field.dataType, StringType):
+            exprs.append(spark_sum(when(col(c).isNull() | (col(c) == "None"), 1)).alias(c))
+        else:
+            exprs.append(spark_sum(when(col(c).isNull(), 1)).alias(c))
+    df.select(exprs).collect()
+    t2 = time.perf_counter() - start
+    print(f"C2 Spark: {t2:.6f}s")
 
-exprs = []
-for field in df.schema.fields:
-    c = field.name
-    
-    if isinstance(field.dataType, StringType):
-        # String columns → check null OR "None"
-        exprs.append(
-            spark_sum(when(col(c).isNull() | (col(c) == "None"), 1)).alias(c)
-        )
-    else:
-        # Numeric/date columns → only check null
-        exprs.append(
-            spark_sum(when(col(c).isNull(), 1)).alias(c)
-        )
+    # Test 1.3
+    start = time.perf_counter()
+    df.select(
+        spark_sum(when(col("Monthly_Fee") > 0, 1)),
+        spark_sum(when(col("Age") > 20, 1)),
+        spark_sum(when(col("Gender") == "None", 1))
+    ).collect()
+    t3 = time.perf_counter() - start
+    print(f"C3 Spark: {t3:.6f}s")
 
-df.select(exprs).collect()
+    results.append({'size': label, 'test_1': t1, 'test_2': t2, 'test_3': t3,
+                    'avg': (t1 + t2 + t3) / 3})
 
-end = time.perf_counter()
-print("C2 Spark:", end - start)
-
-
-# Test 1.3: Complex (all columns + Mixed conditions)
-start = time.perf_counter()
-
-df.select(
-    spark_sum(when(col("Monthly_Fee") > 0,1)),
-    spark_sum(when(col("Age") > 20,1)),
-    spark_sum(when(col("Gender") == "None",1))
-).collect()
-
-end = time.perf_counter()
-print("C3 Spark:", end - start)
-
-# Stop Spark session
+import pandas as pd
+print("\n", pd.DataFrame(results))
 spark.stop()
