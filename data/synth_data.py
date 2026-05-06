@@ -1,3 +1,5 @@
+### CODE TO SYNTHESIZE THE DATA
+
 import pandas as pd
 import numpy as np
 import os
