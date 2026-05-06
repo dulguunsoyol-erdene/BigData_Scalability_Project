@@ -1,0 +1,21 @@
+Data Column Information
+
+| Column Name                   | Description                                                     | Data Type        | Categorical Data                                             |
+| ----------------------------- | --------------------------------------------------------------- | ---------------- | ------------------------------------------------------------ |
+| Customer_ID                   | Unique identifier assigned to each customer                     | Integer          |                                                              |
+| Age                           | Customer age (range 18–70)                                      | Integer          |                                                              |
+| Gender                        | Customer gender identity                                        | String           | (`Male`, `Female`, `Other`, `None`)                          |
+| Location                      | Customer country/location                                       | String           | (`USA`, `Canada`, `UK`, `Australia`, `Germany`, `None`)      |
+| Signup_Date                   | Date when the customer subscribed to the service                | Datetime         |                                                              |
+| Subscription_Type             | Type of subscription plan selected by the customer              | String           | (`Basic`, `Standard`, `Premium`)                             |
+| Billing_Cycle                 | Billing frequency of the subscription                           | String           | (`Monthly`, `Annual`)                                        |
+| Monthly_Fee                   | Monthly subscription fee charged to the customer (USD)          | Float            |                                                              |
+| Avg_Monthly_Usage_Hours       | Average number of hours the customer uses the service per month | Float            |                                                              |
+| Login_Frequency_Per_Month     | Number of times the customer logs in per month                  | Integer          |                                                              |
+| Support_Tickets_Count         | Number of customer support tickets raised                       | Integer          |                                                              |
+| Payment_Method                | Method used for payment                                         | String           | (`Credit Card`, `Debit Card`, `PayPal`, `Bank Transfer`)     |
+| Late_Payments_Count           | Number of late payments made by the customer                    | Integer          |                                                              |
+| Discount_Applied              | Indicator if a discount is applied (1 = Yes, 0 = No)            | Integer (Binary) | (0, 1)                                                       |
+| Customer_Tenure_Months        | Number of months the customer has been subscribed               | Integer          |                                                              |
+| Churn_Status                  | Indicates whether the customer has churned                      | Integer (Binary) | (0 = Active, 1 = Churned)                                    |
+| Churn_Date                    | Date when the customer churned (if applicable, otherwise null)  | Datetime         |                                                              |
